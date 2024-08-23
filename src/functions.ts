@@ -1,113 +1,126 @@
+import { HTTPResponse } from "puppeteer";
 import { browser, config } from ".";
-import { PopularVideoResponse, Relation, User, Zone } from "./types";
-import { log } from "./utils";
+import { Relation, User, Zone } from "./types";
+import { random } from "./utils";
 
-export const get_popular_users = (zone: Zone): Promise<User[]> =>
-  new Promise(async (resolve) => {
-    const target_url = `https://www.bilibili.com/v/popular/rank/${zone}`;
+export const new_page = async () => {
+  const page = await browser.newPage();
 
-    const page = await browser.newPage();
-
-    await page.setUserAgent(config.user_agent);
-
-    await page.setUserAgent(config.user_agent);
-
-    page.on("response", async (response) => {
-      const url = new URL(response.url());
-
-      if (url.href.startsWith(`https://api.bilibili.com/x/web-interface/ranking/v2`)) {
-        if (!response.ok()) {
-          log(`Failed when fetching ${zone} popular list`);
-          resolve([]);
-        }
-
-        const json: PopularVideoResponse = await response.json();
-
-        resolve(
-          json.data.list.map(({ owner }) => ({
-            avatar: owner.face,
-            mid: owner.mid,
-            name: owner.name,
-          }))
-        );
-      }
-    });
-
-    if (page.url() === target_url) {
-      await page.reload({
-        timeout: 0,
-        waitUntil: "load",
-      });
-    } else {
-      await page.goto(target_url, {
-        timeout: 0,
-        waitUntil: "load",
-      });
-    }
-
-    await page.close();
+  await page.setViewport({
+    width: 1920,
+    height: 1080,
   });
 
-export const get_user_relations = (mid: number): Promise<Relation> =>
-  new Promise(async (resolve) => {
-    const target_url = `https://space.bilibili.com/${mid}`;
+  await page.setCacheEnabled(true);
 
-    const page = await browser.newPage();
+  // await page.setCookie(...config.cookie);
 
-    await page.setUserAgent(config.user_agent);
+  await page.setUserAgent(config.user_agent);
 
-    await page.setUserAgent(config.user_agent);
+  return page;
+};
 
-    page.on("response", async (response) => {
-      const url = new URL(response.url());
+export const get_response = async <T>(
+  target: string,
+  timeout: number,
+  predicate: (res: HTTPResponse) => boolean,
+  processor: (res: HTTPResponse) => T
+): Promise<T> => {
+  const page = await new_page();
 
-      if (url.href.startsWith(`https://api.bilibili.com/x/relation/stat`)) {
-        if (!response.ok()) {
-          log(`Failed when fetching relation for ${mid}`);
-          resolve({
-            mid,
-            following: 0,
-            follower: 0,
-          });
-        }
-
-        const json = await response.json();
-
-        resolve({
-          mid,
-          following: json.data.following,
-          follower: json.data.follower,
-        });
-      }
-    });
-
-    if (page.url() === target_url) {
-      await page.reload({
-        timeout: 0,
+  try {
+    const [res] = await Promise.all([
+      page.waitForResponse(predicate, {
+        timeout,
+      }),
+      page.goto(target, {
         waitUntil: "domcontentloaded",
-      });
-    } else {
-      await page.goto(target_url, {
-        timeout: 0,
-        waitUntil: "domcontentloaded",
-      });
-    }
+      }),
+    ]);
+
+    const result = await processor(res);
+
+    // await page.goto("about:blank", {
+    //   timeout,
+    //   waitUntil: "load",
+    // });
 
     await page.close();
-  });
+
+    return result;
+  } catch (e) {
+    await page.close();
+    return await get_response(target, timeout, predicate, processor);
+  }
+};
+
+export const get_popular_users = async (zone: Zone, timeout: number): Promise<User[]> => {
+  return await get_response(
+    `https://www.bilibili.com/v/popular/rank/${zone}`,
+    timeout,
+    (response) => {
+      const url = new URL(response.url());
+      return url.href.startsWith(`https://api.bilibili.com/x/web-interface/ranking/v2`);
+    },
+    async (response) => {
+      const json = await response.json();
+
+      return json.data.list.map(
+        ({
+          owner,
+        }: {
+          owner: {
+            mid: number;
+            name: string;
+            face: string;
+          };
+        }) => ({
+          avatar: owner.face,
+          mid: owner.mid,
+          name: owner.name,
+        })
+      );
+    }
+  );
+};
+
+export const get_user_relations = async (mid: number, timeout: number): Promise<Relation> => {
+  return await get_response(
+    `https://space.bilibili.com/${mid}`,
+    timeout,
+    (response) => {
+      const url = new URL(response.url());
+      return url.href.startsWith(`https://api.bilibili.com/x/relation/stat`);
+    },
+    async (response) => {
+      const json = await response.json();
+
+      return {
+        mid,
+        following: json.data.following,
+        follower: json.data.follower,
+      };
+    }
+  );
+};
 
 export const watch_popular_users = async (zone: Zone, interval: number, callback: (users: User[]) => Promise<void | (() => Promise<void>)>) => {
   let cleanup: () => Promise<void>;
 
-  const task = async () => {
-    if (cleanup) await cleanup();
+  const task = () => {
+    setTimeout(
+      async () => {
+        if (cleanup) await cleanup();
 
-    const users = await get_popular_users(zone);
-    const maybe_cleanup = await callback(users);
+        const users = await get_popular_users(zone, interval);
+        const maybe_cleanup = await callback(users);
 
-    if (maybe_cleanup) {
-      cleanup = maybe_cleanup;
-    }
+        if (maybe_cleanup) {
+          cleanup = maybe_cleanup;
+        }
+      },
+      random(0, 1000)
+    );
   };
 
   task();
@@ -117,9 +130,14 @@ export const watch_popular_users = async (zone: Zone, interval: number, callback
 };
 
 export const watch_user_relations = async (mid: number, interval: number, callback: (relation: Relation) => Promise<void | (() => Promise<void>)>) => {
-  const task = async () => {
-    const relation = await get_user_relations(mid);
-    await callback(relation);
+  const task = () => {
+    setTimeout(
+      async () => {
+        const relation = await get_user_relations(mid, interval / 4);
+        await callback(relation);
+      },
+      random(0, 1000)
+    );
   };
 
   task();

@@ -17,19 +17,16 @@ import { relations, users } from "./databases";
 import { watch_popular_users, watch_user_relations } from "./functions";
 import { save } from "./databases";
 import { server } from "./api";
+import { equals } from "ramda";
 
 program.name(package_json.name.toUpperCase()).description(package_json.description).version(package_json.version);
 
 program
   .option("--no-headless", "关闭无头模式")
-
-  .option("--limit <limit>", "限制最大样本数量", "100")
-  .option(
-    "--user-agent <user_agent>",
-    "重写用户代理",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36"
-  )
-  .option("--interval <interval>", "监视间隔", "5000");
+  .option("--limit <limit>", "限制监控数量（小于等于100）", "10")
+  .option("--user-agent <user_agent>", "重写用户代理")
+  .option("--cookie <cookie>", "重写 Cookie", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36")
+  .option("--interval <interval>", "监视间隔", `${60 * 1000}`);
 // .option("--targets <targets>", "指定目标文件");
 
 program.configureHelp({
@@ -46,34 +43,50 @@ export const config = {
   // max_runs: Number(program.opts()["maxRuns"]),
   limit: Number(program.opts()["limit"]),
   user_agent: program.opts()["userAgent"],
+  // cookie: JSON.parse(program.opts()["cookie"]).map((cookie: any) => ({
+  //   name: cookie.name,
+  //   value: cookie.value,
+  //   domain: cookie.domain,
+  //   expires: cookie.expires,
+  //   // httpOnly: cookie.httpOnly,
+  //   // secure: cookie.secure,
+  //   // sameSite: cookie.sameSite,
+  // })),
   interval: Number(program.opts()["interval"]),
   // targets: program.opts()["targets"],
 };
 
-log(`已载入配置 ${JSON.stringify(config)}`);
+// console.log(config.cookie);
+
+log(`已载入配置`);
 
 export const browser = await puppeteer.launch({
   headless: config.headless,
 });
+
 log(`已启动浏览器 ${config.headless ? "无头" : "有头"}`);
 
 process.on("exit", async () => {
-  await save();
-
-  await browser.close();
+  save();
 });
 
-setInterval(save, 5 * 1000);
+setInterval(save, config.interval * 10);
 
 watch_popular_users("all", config.interval * 5, async (us) => {
-  users.data.push({ timestamp: Date.now(), value: us });
+  const limit_us = us.slice(0, 10 ?? config.limit);
 
-  log(`已获取 ${us.length} 个热门用户`);
+  if (!equals(users.data.at(-1)?.value, limit_us)) {
+    users.data.push({ timestamp: Date.now(), value: limit_us });
+  }
+
+  log(`已获取 ${limit_us.length} 个热门用户`);
 
   const cleanups = await Promise.all(
-    us.slice(0, 10).map(async (user) => {
+    limit_us.map(async (user) => {
       log(`正在监视用户 ${user.name} (${user.mid})`);
       return await watch_user_relations(user.mid, config.interval, async (rl) => {
+        log(`已获取用户 ${user.name} (${user.mid}) 的关系`);
+
         relations.data.push({ timestamp: Date.now(), value: rl });
       });
     })

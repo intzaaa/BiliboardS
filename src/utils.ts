@@ -22,3 +22,9 @@ export const add_sign = (value: any) => {
   if (number > 0) return `+${number}`;
   return number.toString();
 };
+
+export function random(min: number, max: number) {
+  min = Math.ceil(min);
+  max = Math.floor(max);
+  return Math.floor(Math.random() * (max - min + 1) + min); //The maximum is inclusive and the minimum is inclusive
+}
