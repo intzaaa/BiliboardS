@@ -7,10 +7,10 @@ import { Responses } from "./types";
 export const server = fastify({});
 
 await server.register(cors, {
-  origin: "*",
+  origin: true,
 });
 
-server.get("/", async (): Promise<Responses["/"]> => {
+server.get("/", async (req): Promise<Responses["/"]> => {
   const latest = users.data.at(-1);
   return {
     info: {
@@ -25,7 +25,7 @@ server.get("/", async (): Promise<Responses["/"]> => {
       return {
         mid,
         name,
-        avatar,
+        avatar: `${req.protocol}://${req.hostname}/avatar/` + avatar.split("/").at(-1)?.replace(".jpg", ""),
         records: relations.data.filter((relation) => relation.value.mid === mid),
       };
     }),
@@ -83,4 +83,10 @@ server.get("/relation/:mid", async (request, reply) => {
   }
 
   return relation;
+});
+
+server.get("/avatar/:id", async (request) => {
+  const id = String((request.params as any)["id"]);
+  const target = `https://i1.hdslb.com/bfs/face/${id}.jpg`;
+  return fetch(target);
 });
