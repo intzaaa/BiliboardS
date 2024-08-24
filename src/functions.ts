@@ -2,6 +2,7 @@ import { HTTPResponse } from "puppeteer";
 import { browser, config } from ".";
 import { Relation, User, Zone } from "./types";
 import { random } from "./utils";
+import UserAgent from "user-agents";
 
 export const new_page = async () => {
   const page = await browser.newPage();
@@ -15,7 +16,12 @@ export const new_page = async () => {
 
   // await page.setCookie(...config.cookie);
 
-  await page.setUserAgent(config.user_agent);
+  await page.setUserAgent(
+    config.user_agent ??
+      new UserAgent({
+        deviceCategory: "mobile",
+      }).toString()
+  );
 
   return page;
 };
@@ -95,7 +101,7 @@ export const get_popular_users = async (zone: Zone, timeout: number): Promise<Us
 
 export const get_user_relations = async (mid: number, timeout: number): Promise<Relation> => {
   return await get_response(
-    `https://m.bilibili.com/space/${mid}`,
+    [`https://m.bilibili.com/space/${mid}`, `https://space.bilibili.com/${mid}`][random(0, 1)]!,
     timeout,
     (response) => {
       const url = new URL(response.url());

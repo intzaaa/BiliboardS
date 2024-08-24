@@ -25,11 +25,7 @@ program
   .option("-p, --port <port>", "指定端口", "3000")
   .option("--no-headless", "是否开启无头模式", true)
   .option("-l, --limit <limit>", "限制监控数量（小于等于100）", "10")
-  .option(
-    "-u, --user-agent <user_agent>",
-    "重写用户代理",
-    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1"
-  )
+  .option("-u, --user-agent <user_agent>", "重写用户代理")
   .option("-c, --cookie <cookie>", "重写 Cookie")
   .option("-i, --interval <interval>", "监视间隔", `${30 * 1000}`);
 // .option("--targets <targets>", "指定目标文件");
@@ -70,6 +66,8 @@ log(`已载入配置 ${JSON.stringify(program.opts())}`);
 
 export const browser = await puppeteer.launch({
   headless: config.headless,
+  timeout: 0,
+  protocolTimeout: 100_000_000,
 });
 
 log(`已启动浏览器 ${config.headless ? "无头" : "有头"}`);
