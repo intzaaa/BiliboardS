@@ -10,8 +10,9 @@ await server.register(cors, {
   origin: true,
 });
 
-server.get("/", async (req): Promise<Responses["/"]> => {
+server.get("/", async (request): Promise<Responses["/"]> => {
   const latest = users.data.at(-1);
+  const limit = Number((request.query as any)["limit"]) || 100;
   return {
     info: {
       interval: config.interval,
@@ -25,8 +26,8 @@ server.get("/", async (req): Promise<Responses["/"]> => {
       return {
         mid,
         name,
-        avatar: `${req.protocol}://${req.hostname}/avatar/` + avatar.split("/").at(-1)?.replace(".jpg", ""),
-        records: relations.data.filter((relation) => relation.value.mid === mid),
+        avatar: `${request.protocol}://${request.hostname}/avatar/` + avatar.split("/").at(-1)?.replace(".jpg", ""),
+        records: relations.data.filter((relation) => relation.value.mid === mid).slice(-limit),
       };
     }),
   };
