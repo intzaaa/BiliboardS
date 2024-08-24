@@ -23,23 +23,6 @@ export type Zone =
   | "channel"
   | "information";
 
-export type PopularVideoResponse = {
-  code: number;
-  message: string;
-  ttl: number;
-  data: {
-    list: {
-      title: string;
-      tname: string;
-      owner: {
-        mid: number;
-        name: string;
-        face: string;
-      };
-    }[];
-  };
-};
-
 export type User = {
   mid: number;
 
@@ -58,3 +41,20 @@ export type DBRecord<T> = {
   timestamp: number;
   value: T;
 };
+
+export type Responses = {
+  "/": {
+    info: {
+      interval: number;
+      limit: number;
+    };
+    data: {
+      mid: number;
+      name: string;
+      avatar: string;
+      records: DBRecord<Relation>[];
+    }[];
+  };
+};
+
+export { Config } from ".";

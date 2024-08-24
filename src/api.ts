@@ -1,6 +1,8 @@
 import fastify from "fastify";
 import cors from "@fastify/cors";
 import { relations, users } from "./databases";
+import { config } from ".";
+import { Responses } from "./types";
 
 export const server = fastify({});
 
@@ -8,8 +10,26 @@ await server.register(cors, {
   origin: "*",
 });
 
-server.get("/", async () => {
-  return "OK";
+server.get("/", async (): Promise<Responses["/"]> => {
+  const latest = users.data.at(-1);
+  return {
+    info: {
+      interval: config.interval,
+      limit: config.limit,
+    },
+    data: (
+      latest ?? {
+        value: [],
+      }
+    ).value.map(({ name, mid, avatar }) => {
+      return {
+        mid,
+        name,
+        avatar,
+        records: relations.data.filter((relation) => relation.value.mid === mid),
+      };
+    }),
+  };
 });
 
 server.get("/users", async (request, reply) => {

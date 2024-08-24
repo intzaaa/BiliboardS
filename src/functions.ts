@@ -7,8 +7,8 @@ export const new_page = async () => {
   const page = await browser.newPage();
 
   await page.setViewport({
-    width: 1920,
-    height: 1080,
+    width: 390,
+    height: 844,
   });
 
   await page.setCacheEnabled(true);
@@ -27,7 +27,6 @@ export const get_response = async <T>(
   processor: (res: HTTPResponse) => T
 ): Promise<T> => {
   const page = await new_page();
-
   try {
     const [res] = await Promise.all([
       page.waitForResponse(predicate, {
@@ -36,7 +35,9 @@ export const get_response = async <T>(
       page.goto(target, {
         waitUntil: "domcontentloaded",
       }),
-    ]);
+    ]).catch((e) => {
+      throw e;
+    });
 
     const result = await processor(res);
 
@@ -49,7 +50,15 @@ export const get_response = async <T>(
 
     return result;
   } catch (e) {
-    await page.close();
+    // await page.goto("about:blank", {
+    //   timeout,
+    //   waitUntil: "load",
+    // });
+
+    try {
+      await page.close();
+    } catch (e) {}
+
     return await get_response(target, timeout, predicate, processor);
   }
 };
@@ -86,7 +95,7 @@ export const get_popular_users = async (zone: Zone, timeout: number): Promise<Us
 
 export const get_user_relations = async (mid: number, timeout: number): Promise<Relation> => {
   return await get_response(
-    `https://space.bilibili.com/${mid}`,
+    `https://m.bilibili.com/space/${mid}`,
     timeout,
     (response) => {
       const url = new URL(response.url());

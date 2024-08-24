@@ -4,10 +4,10 @@ import { mkdirSync } from "fs";
 
 mkdirSync("databases", { recursive: true });
 
-const users = await JSONFileSyncPreset<DBRecord<User[]>[]>("databases/users.json", []);
+const users = JSONFileSyncPreset<DBRecord<User[]>[]>("databases/users.json", []);
 users.read();
 
-const relations = await JSONFileSyncPreset<DBRecord<Relation>[]>("databases/relations.json", []);
+const relations = JSONFileSyncPreset<DBRecord<Relation>[]>("databases/relations.json", []);
 relations.read();
 
 export { users, relations };

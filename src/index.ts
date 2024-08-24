@@ -22,11 +22,16 @@ import { equals } from "ramda";
 program.name(package_json.name.toUpperCase()).description(package_json.description).version(package_json.version);
 
 program
-  .option("--no-headless", "关闭无头模式")
-  .option("--limit <limit>", "限制监控数量（小于等于100）", "10")
-  .option("--user-agent <user_agent>", "重写用户代理")
-  .option("--cookie <cookie>", "重写 Cookie", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36")
-  .option("--interval <interval>", "监视间隔", `${60 * 1000}`);
+  .option("-p, --port <port>", "指定端口", "3000")
+  .option("--no-headless", "是否开启无头模式", true)
+  .option("-l, --limit <limit>", "限制监控数量（小于等于100）", "10")
+  .option(
+    "-u, --user-agent <user_agent>",
+    "重写用户代理",
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1"
+  )
+  .option("-c, --cookie <cookie>", "重写 Cookie")
+  .option("-i, --interval <interval>", "监视间隔", `${60 * 1000}`);
 // .option("--targets <targets>", "指定目标文件");
 
 program.configureHelp({
@@ -39,6 +44,7 @@ program.helpOption("-h, --help", "打印帮助信息");
 program.parse().showHelpAfterError();
 
 export const config = {
+  port: Number(program.opts()["port"]),
   headless: program.opts()["headless"],
   // max_runs: Number(program.opts()["maxRuns"]),
   limit: Number(program.opts()["limit"]),
@@ -56,9 +62,11 @@ export const config = {
   // targets: program.opts()["targets"],
 };
 
+export type Config = typeof config;
+
 // console.log(config.cookie);
 
-log(`已载入配置`);
+log(`已载入配置 ${JSON.stringify(program.opts())}`);
 
 export const browser = await puppeteer.launch({
   headless: config.headless,
@@ -73,7 +81,7 @@ process.on("exit", async () => {
 setInterval(save, config.interval * 10);
 
 watch_popular_users("all", config.interval * 5, async (us) => {
-  const limit_us = us.slice(0, 10 ?? config.limit);
+  const limit_us = us.slice(0, config.limit);
 
   if (!equals(users.data.at(-1)?.value, limit_us)) {
     users.data.push({ timestamp: Date.now(), value: limit_us });
