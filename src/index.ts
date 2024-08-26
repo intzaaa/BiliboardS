@@ -197,6 +197,8 @@ watch_videos("all", config.intervals.video, async (videos) => {
   return () => {
     multi_bar.terminate();
     clear_ids.forEach((f) => f());
+
+    console.log("\n");
   };
 });
 

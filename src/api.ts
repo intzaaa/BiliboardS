@@ -16,7 +16,7 @@ server.get("/", async (request): Promise<Responses["/"]> => {
   return {
     interval: min_interval,
     data: {
-      words: await calculate_words(latest.value.map((video) => video.title)),
+      words: await calculate_words([...latest.value.map((video) => video.title), ...latest.value.map((video) => video.description)]),
       videos: latest.value.map((video) => ({
         ...video,
         owner: {

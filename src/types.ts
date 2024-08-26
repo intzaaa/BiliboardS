@@ -41,6 +41,7 @@ export type Video = {
   bvid: string;
   title: string;
   cover: string;
+  description: string;
   owner: User;
 };
 

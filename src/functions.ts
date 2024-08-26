@@ -108,6 +108,7 @@ export const capture_videos = async (zone: Zone) => {
             aid: number;
             bvid: string;
             pic: string;
+            desc: string;
             owner: {
               mid: number;
               name: string;
@@ -126,6 +127,7 @@ export const capture_videos = async (zone: Zone) => {
         aid: video.aid,
         bvid: video.bvid,
         cover: video.pic,
+        description: video.desc,
         owner: {
           mid: video.owner.mid,
           name: video.owner.name,
