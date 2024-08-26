@@ -32,6 +32,7 @@ const opts = {
     "interval-video",
     "interval-relation",
     "video-zone",
+    "relation-limit",
   ],
   alias: {
     h: "help",
@@ -90,6 +91,9 @@ export const config: {
   video: {
     zone: Zone;
   };
+  relation: {
+    limit: number;
+  };
 } = {
   once: args["once"],
   max_tasks: Number(args["max-tabs"] ?? 5),
@@ -110,6 +114,9 @@ export const config: {
   },
   video: {
     zone: args["video-zone"] ?? "all",
+  },
+  relation: {
+    limit: Number(args["relation-limit"] ?? 20),
   },
 };
 
@@ -160,7 +167,7 @@ watch_videos("all", config.intervals.video, async (videos) => {
   const multi_bar = new MultiProgressBar(process.stderr);
 
   const clear_ids = await Promise.all(
-    videos.slice(0, 20).map((video) => {
+    videos.slice(0, config.relation.limit).map((video) => {
       return (async () => {
         let bar: ProgressBar;
 
