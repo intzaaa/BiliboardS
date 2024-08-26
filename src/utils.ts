@@ -1,30 +1,13 @@
 import dayjs from "dayjs";
+import chalk from "chalk";
+import { stdout } from "process";
 
 export const log = (...message: any[]) => {
-  console.log(`[${dayjs().format()}]`, ...message);
+  stdout.write(`${`${chalk.dim(dayjs().format())}`} ${message.join(" ")}\n`);
 };
 
-export const boolean = (value: any) => {
-  switch (String(value).toLowerCase()) {
-    case "1":
-    case "true":
-      return true;
-    case "0":
-    case "false":
-      return false;
-    default:
-      return false;
-  }
-};
-
-export const add_sign = (value: any) => {
-  const number = Number(value);
-  if (number > 0) return `+${number}`;
-  return number.toString();
-};
-
-export function random(min: number, max: number) {
+export const random = (min: number, max: number) => {
   min = Math.ceil(min);
   max = Math.floor(max);
   return Math.floor(Math.random() * (max - min + 1) + min); //The maximum is inclusive and the minimum is inclusive
-}
+};

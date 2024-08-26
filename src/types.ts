@@ -1,3 +1,5 @@
+import { config } from ".";
+
 export type Zone =
   | "all"
   | "guochuang"
@@ -25,9 +27,21 @@ export type Zone =
 
 export type User = {
   mid: number;
-
   avatar: string;
   name: string;
+};
+
+export type Word = {
+  heat: number;
+  name: string;
+};
+
+export type Video = {
+  aid: number;
+  bvid: string;
+  title: string;
+  cover: string;
+  owner: User;
 };
 
 export type Relation = {
@@ -37,24 +51,38 @@ export type Relation = {
   follower: number;
 };
 
-export type DBRecord<T> = {
+export type DB<T> = {
   timestamp: number;
   value: T;
-};
+}[];
 
 export type Responses = {
   "/": {
-    info: {
-      interval: number;
-      limit: number;
-    };
+    interval: number;
     data: {
-      mid: number;
-      name: string;
-      avatar: string;
-      records: DBRecord<Relation>[];
-    }[];
+      words: Word[];
+      videos: (Video & {
+        owner: User & {
+          relations: DB<Relation>;
+        };
+      })[];
+    };
+  };
+  "/config": typeof config;
+  "/videos": {
+    videos: Video[];
+  };
+  "/relations": {
+    relations: Relation[];
+  };
+  "/users": {
+    users: User[];
+  };
+  "/words": {
+    words: Word[];
   };
 };
 
-export { Config } from ".";
+export type PromiseOrNot<T> = T | Promise<T>;
+
+export type ScheduleCallback<T> = (result: Awaited<T>) => PromiseOrNot<void | (() => PromiseOrNot<void>)>;

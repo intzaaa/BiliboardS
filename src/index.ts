@@ -1,108 +1,198 @@
-// import { monitor, Monitor_Data } from "./monitor";
-// import { parse as parse_csv } from "csv-parse";
-// import { mkdirSync, readFileSync, watchFile } from "fs";
-// import { render_chart_to_svg, render_svg_to_png, save_png, save_svg } from "./renderer";
-// import { JSONFileSyncPreset } from "lowdb/node";
-// import { program } from "commander";
-// import puppeteer from "puppeteer";
-// import dayjs from "dayjs";
-// import { add_sign, log } from "./utils";
-// import { PopularUsers, PopularVideoResponse, User } from "./types";
-
-import { program } from "commander";
-import package_json from "../package.json" with { type: "json" };
 import { log } from "./utils";
+import minimist from "minimist";
 import puppeteer from "puppeteer";
-import { relations, users } from "./databases";
-import { watch_popular_users, watch_user_relations } from "./functions";
-import { save } from "./databases";
-import { server } from "./api";
+import { JSONFileSyncPreset } from "lowdb/node";
+import { watch_videos, watch_relations } from "./functions";
+import { DB, Relation, Video, Zone } from "./types";
 import { equals } from "ramda";
+import { server } from "./api";
+import { mkdirSync } from "fs";
+import MultiProgressBar from "multi-progress";
+import ProgressBar from "progress";
 
-program.name(package_json.name.toUpperCase()).description(package_json.description).version(package_json.version);
-
-program
-  .option("-p, --port <port>", "指定端口", "3000")
-  .option("--no-headless", "是否开启无头模式", true)
-  .option("-l, --limit <limit>", "限制监控数量（小于等于100）", "10")
-  .option("-u, --user-agent <user_agent>", "重写用户代理")
-  .option("-c, --cookie <cookie>", "重写 Cookie")
-  .option("-i, --interval <interval>", "监视间隔", `${30 * 1000}`);
-// .option("--targets <targets>", "指定目标文件");
-
-program.configureHelp({
-  sortSubcommands: true,
-  sortOptions: true,
-});
-
-program.helpOption("-h, --help", "打印帮助信息");
-
-program.parse().showHelpAfterError();
-
-export const config = {
-  port: Number(program.opts()["port"]),
-  headless: program.opts()["headless"],
-  // max_runs: Number(program.opts()["maxRuns"]),
-  limit: Number(program.opts()["limit"]),
-  user_agent: program.opts()["userAgent"],
-  // cookie: JSON.parse(program.opts()["cookie"]).map((cookie: any) => ({
-  //   name: cookie.name,
-  //   value: cookie.value,
-  //   domain: cookie.domain,
-  //   expires: cookie.expires,
-  //   // httpOnly: cookie.httpOnly,
-  //   // secure: cookie.secure,
-  //   // sameSite: cookie.sameSite,
-  // })),
-  interval: Number(program.opts()["interval"]),
-  // targets: program.opts()["targets"],
+const opts = {
+  boolean: ["help", "once", "headless", "sandbox"],
+  default: {
+    once: false,
+    headless: true,
+    sandbox: true,
+  },
+  string: [
+    "user-agent",
+    "max-tabs",
+    "max-retries",
+    "db",
+    "db-video",
+    // "db-comment",
+    // "db-user",
+    "db-relation",
+    // "video-interval",
+    // "comment-interval",
+    // "user-interval",
+    "interval-video",
+    "interval-relation",
+    "video-zone",
+  ],
+  alias: {
+    h: "help",
+    o: "once",
+    H: "headless",
+    S: "sandbox",
+    u: "user-agent",
+    m: "max-tabs",
+  },
 };
 
-export type Config = typeof config;
+const args = minimist(process.argv.slice(2), opts);
 
-// console.log(config.cookie);
+if (args["help"]) {
+  log(
+    `boolean: [${opts.boolean
+      .map((v) => {
+        const def = opts.default[v as keyof typeof opts.default];
+        if (def) {
+          return `${v}:${def}`;
+        } else {
+          return v;
+        }
+      })
+      .join(", ")}]`
+  );
+  log(`value: [${opts.string.join(", ")}]`);
+  process.exit(0);
+}
 
-log(`已载入配置 ${JSON.stringify(program.opts())}`);
+// log(`已解析参数 ${JSON.stringify(options)}`);
+
+const databases_directory = args["db"] ?? "databases";
+
+export const config: {
+  once: boolean;
+  max_tasks: number;
+  browser: {
+    headless: boolean;
+    sandbox: boolean;
+    max_retries: number;
+    user_agent: string | "auto";
+  };
+  databases: {
+    directory: string;
+    video: string;
+    // comment: string;
+    // user: string;
+    relation: string;
+  };
+  intervals: {
+    video: number;
+    // comment: number;
+    relation: number;
+  };
+  video: {
+    zone: Zone;
+  };
+} = {
+  once: args["once"],
+  max_tasks: Number(args["max-tabs"] ?? 5),
+  browser: {
+    headless: args["headless"],
+    sandbox: args["sandbox"],
+    max_retries: Number(args["max-retry"] ?? 5),
+    user_agent: args["user-agent"] ?? "auto",
+  },
+  databases: {
+    directory: databases_directory,
+    video: args["db-video"] ?? `${databases_directory}/video.json`,
+    relation: args["db-relation"] ?? `${databases_directory}/relation.json`,
+  },
+  intervals: {
+    video: Number(args["interval-video"] ?? 120000),
+    relation: Number(args["interval-relation"] ?? 30000),
+  },
+  video: {
+    zone: args["video-zone"] ?? "all",
+  },
+};
+
+export const min_interval = Math.min(...Object.values(config.intervals));
+
+log(`已载入配置 ${JSON.stringify(config)}`);
 
 export const browser = await puppeteer.launch({
-  headless: config.headless,
-  timeout: 0,
-  protocolTimeout: 100_000_000,
+  headless: config.browser.headless,
+  args: config.browser.sandbox ? [] : ["--no-sandbox", "--disable-setuid-sandbox"],
 });
 
-log(`已启动浏览器 ${config.headless ? "无头" : "有头"}`);
+log("已启动浏览器");
 
-process.on("exit", async () => {
-  save();
-});
+mkdirSync(databases_directory, { recursive: true });
 
-setInterval(save, config.interval * 10);
+export const [video_database, relation_database] = [
+  JSONFileSyncPreset<DB<Video[]>>(config.databases.video, []),
+  JSONFileSyncPreset<DB<Relation>>(config.databases.relation, []),
+];
 
-watch_popular_users("all", config.interval * 5, async (us) => {
-  const limit_us = us.slice(0, config.limit);
+const read = () => {
+  video_database.read();
+  relation_database.read();
+};
+read();
 
-  if (!equals(users.data.at(-1)?.value, limit_us)) {
-    users.data.push({ timestamp: Date.now(), value: limit_us });
+const write = () => {
+  video_database.write();
+  relation_database.write();
+};
+
+process.on("exit", write);
+
+setInterval(write, min_interval * 10);
+
+log("已载入数据库");
+
+watch_videos("all", config.intervals.video, async (videos) => {
+  log(`已获取 ${videos.length} 条视频信息`);
+
+  const last = video_database.data.at(-1)?.value;
+
+  if (!equals(last, videos)) {
+    video_database.data.push({ timestamp: Date.now(), value: videos });
   }
 
-  log(`已获取 ${limit_us.length} 个热门用户`);
+  const multi_bar = new MultiProgressBar(process.stderr);
 
-  const cleanups = await Promise.all(
-    limit_us.map(async (user) => {
-      log(`正在监视用户 ${user.name} (${user.mid})`);
-      return await watch_user_relations(user.mid, config.interval, async (rl) => {
-        log(`已获取用户 ${user.name} (${user.mid}) 的关系`);
+  const clear_ids = await Promise.all(
+    videos.slice(0, 20).map((video) => {
+      return (async () => {
+        let bar: ProgressBar;
 
-        relations.data.push({ timestamp: Date.now(), value: rl });
-      });
+        return watch_relations(video.owner.mid, config.intervals.relation, async (relation) => {
+          if (!bar) {
+            bar = multi_bar.newBar(`[:bar] ${video.owner.name}`, {
+              total: config.intervals.video / config.intervals.relation,
+              width: 20,
+            });
+          }
+
+          bar.tick();
+
+          relation_database.data.push({
+            timestamp: Date.now(),
+            value: {
+              mid: video.owner.mid,
+              following: relation.following,
+              follower: relation.follower,
+            },
+          });
+        });
+      })();
     })
   );
 
-  return async () => {
-    await Promise.all(cleanups.map((f) => f()));
+  return () => {
+    multi_bar.terminate();
+    clear_ids.forEach((f) => f());
   };
 });
 
-await server.listen({
+server.listen({
   port: 3000,
 });

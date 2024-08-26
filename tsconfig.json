@@ -1,10 +1,10 @@
 {
   "include": ["src/**/*", "deprecated/renderer.ts"],
-  "exclude": ["example/**/*"],
+  "exclude": ["_*"],
   "buildOptions": {},
   "compilerOptions": {
     "outDir": "dist",
-    "isolatedModules": false,
+    "isolatedModules": true,
     "moduleResolution": "Bundler",
     "module": "ESNext",
     "target": "ESNext",

@@ -1,8 +1,8 @@
 import fastify from "fastify";
 import cors from "@fastify/cors";
-import { relations, users } from "./databases";
-import { config } from ".";
+import { min_interval, relation_database, video_database } from ".";
 import { Responses } from "./types";
+import { calculate_words } from "./functions";
 
 export const server = fastify({});
 
@@ -11,83 +11,19 @@ await server.register(cors, {
 });
 
 server.get("/", async (request): Promise<Responses["/"]> => {
-  const latest = users.data.at(-1);
-  const limit = Number((request.query as any)["limit"]) || 100;
+  const latest = video_database.data.at(-1) ?? { timestamp: 0, value: [] };
+  const max_history = Number((request.query as any)["max_history"]) || 100;
   return {
-    info: {
-      interval: config.interval,
-      limit: config.limit,
+    interval: min_interval,
+    data: {
+      words: await calculate_words(latest.value.map((video) => video.title)),
+      videos: latest.value.map((video) => ({
+        ...video,
+        owner: {
+          ...video.owner,
+          relations: relation_database.data.filter((rl) => rl.value.mid === video.owner.mid).slice(-max_history),
+        },
+      })),
     },
-    data: (
-      latest ?? {
-        value: [],
-      }
-    ).value.map(({ name, mid, avatar }) => {
-      return {
-        mid,
-        name,
-        avatar: `${request.protocol}://${request.hostname}/avatar/` + avatar.split("/").at(-1)?.replace(".jpg", ""),
-        records: relations.data.filter((relation) => relation.value.mid === mid).slice(-limit),
-      };
-    }),
   };
-});
-
-server.get("/users", async (request, reply) => {
-  const limit = Number((request.query as any)["limit"]) || 10;
-  const data = users.data.slice(-limit);
-
-  if (data.length === 0) {
-    reply.code(404);
-    return;
-  }
-
-  return data;
-});
-
-server.get("/user/:mid", async (request, reply) => {
-  const mid = Number((request.params as any)["mid"]);
-
-  const user = users.data
-    .filter((users) => users.value.some((user) => user.mid === mid))
-    .at(-1)
-    ?.value.find((user) => user.mid === mid);
-
-  if (!user) {
-    reply.code(404);
-    return;
-  }
-
-  return user;
-});
-
-server.get("/relations", async (request, reply) => {
-  const limit = Number((request.query as any)["limit"]) || 100;
-  const data = relations.data.slice(-limit);
-
-  if (data.length === 0) {
-    reply.code(404);
-    return;
-  }
-
-  return data;
-});
-
-server.get("/relation/:mid", async (request, reply) => {
-  const mid = Number((request.params as any)["mid"]);
-
-  const relation = relations.data.filter((relations) => relations.value.mid === mid);
-
-  if (relation.length === 0) {
-    reply.code(404);
-    return;
-  }
-
-  return relation;
-});
-
-server.get("/avatar/:id", async (request) => {
-  const id = String((request.params as any)["id"]);
-  const target = `https://i1.hdslb.com/bfs/face/${id}.jpg`;
-  return fetch(target);
 });

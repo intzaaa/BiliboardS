@@ -1,8 +1,11 @@
-import { HTTPResponse } from "puppeteer";
+import type { HTTPRequest, HTTPResponse, Page, ResourceType } from "puppeteer";
 import { browser, config } from ".";
-import { Relation, User, Zone } from "./types";
-import { random } from "./utils";
 import UserAgent from "user-agents";
+import { parse as parse_user_agent } from "useragent";
+import { PromiseOrNot, Relation, ScheduleCallback, Video, Word, Zone } from "./types";
+import { cut } from "jieba-wasm";
+import { random } from "./utils";
+import { sortBy } from "ramda";
 
 export const new_page = async () => {
   const page = await browser.newPage();
@@ -16,29 +19,51 @@ export const new_page = async () => {
 
   // await page.setCookie(...config.cookie);
 
-  await page.setUserAgent(
-    config.user_agent ??
-      new UserAgent({
-        deviceCategory: "mobile",
-      }).toString()
-  );
+  config.browser.user_agent !== "" &&
+    (await page.setUserAgent(
+      config.browser.user_agent === "auto"
+        ? new UserAgent((data) => {
+            const ua = parse_user_agent(data.userAgent);
+            return ua.os.family === "iOS" && Number(ua.os.major) >= 11;
+          }).toString()
+        : config.browser.user_agent
+    ));
+
+  await page.setRequestInterception(true);
 
   return page;
 };
 
-export const get_response = async <T>(
-  target: string,
-  timeout: number,
-  predicate: (res: HTTPResponse) => boolean,
-  processor: (res: HTTPResponse) => T
-): Promise<T> => {
+export const close_page = async (page: Page) => {
+  await page.close();
+};
+
+export const capture = async <T>(
+  url: string,
+  predicate: (res: HTTPResponse) => PromiseOrNot<boolean>,
+  processor: (res: HTTPResponse) => PromiseOrNot<T>,
+  filter?: (req: HTTPRequest) => PromiseOrNot<boolean>,
+  retries: number = config.browser.max_retries
+): Promise<Awaited<T>> => {
+  if (retries <= 0) {
+    throw new Error("Max retries exceeded");
+  }
+
   const page = await new_page();
+
   try {
+    page.on("request", async (req) => {
+      if (filter && !(await filter(req))) {
+        await req.abort();
+      } else {
+        await req.continue();
+      }
+    });
+
     const [res] = await Promise.all([
-      page.waitForResponse(predicate, {
-        timeout,
-      }),
-      page.goto(target, {
+      page.waitForResponse(predicate, {}),
+
+      page.goto(url, {
         waitUntil: "domcontentloaded",
       }),
     ]).catch((e) => {
@@ -47,116 +72,151 @@ export const get_response = async <T>(
 
     const result = await processor(res);
 
-    // await page.goto("about:blank", {
-    //   timeout,
-    //   waitUntil: "load",
-    // });
-
-    await page.close();
+    await close_page(page);
 
     return result;
   } catch (e) {
-    // await page.goto("about:blank", {
-    //   timeout,
-    //   waitUntil: "load",
-    // });
+    console.error(e);
 
     try {
-      await page.close();
-    } catch (e) {}
+      await close_page(page);
+    } catch (e) {
+      console.error(e);
+    }
 
-    return await get_response(target, timeout, predicate, processor);
+    return await capture(url, predicate, processor, filter, retries - 1);
   }
 };
 
-export const get_popular_users = async (zone: Zone, timeout: number): Promise<User[]> => {
-  return await get_response(
+export const necessary_filter = (req: HTTPRequest) => {
+  const type = req.resourceType();
+  const necessities: ResourceType[] = ["document", "xhr", "stylesheet", "fetch", "script", "prefetch", "preflight", "other"];
+
+  return necessities.includes(type);
+};
+
+export const capture_videos = async (zone: Zone) => {
+  return await capture<Video[]>(
     `https://www.bilibili.com/v/popular/rank/${zone}`,
-    timeout,
-    (response) => {
-      const url = new URL(response.url());
-      return url.href.startsWith(`https://api.bilibili.com/x/web-interface/ranking/v2`);
-    },
-    async (response) => {
-      const json = await response.json();
+    (res) => res.url().startsWith("https://api.bilibili.com/x/web-interface/ranking/v2"),
+    async (res) => {
+      const data: {
+        code: number;
+        data: {
+          list: {
+            title: string;
+            aid: number;
+            bvid: string;
+            pic: string;
+            owner: {
+              mid: number;
+              name: string;
+              face: string;
+            };
+          }[];
+        };
+      } = await res.json();
 
-      return json.data.list.map(
-        ({
-          owner,
-        }: {
-          owner: {
-            mid: number;
-            name: string;
-            face: string;
-          };
-        }) => ({
-          avatar: owner.face,
-          mid: owner.mid,
-          name: owner.name,
-        })
-      );
-    }
+      if (data.code !== 0) {
+        throw new Error("Invalid response");
+      }
+
+      return data.data.list.map((video) => ({
+        title: video.title,
+        aid: video.aid,
+        bvid: video.bvid,
+        cover: video.pic,
+        owner: {
+          mid: video.owner.mid,
+          name: video.owner.name,
+          avatar: video.owner.face,
+        },
+      }));
+    },
+    necessary_filter
   );
 };
 
-export const get_user_relations = async (mid: number, timeout: number): Promise<Relation> => {
-  return await get_response(
+export const capture_relations = async (mid: number) => {
+  return await capture<Relation>(
     [`https://m.bilibili.com/space/${mid}`, `https://space.bilibili.com/${mid}`][random(0, 1)]!,
-    timeout,
-    (response) => {
-      const url = new URL(response.url());
-      return url.href.startsWith(`https://api.bilibili.com/x/relation/stat`);
-    },
-    async (response) => {
-      const json = await response.json();
+    (res) => res.url().startsWith(`https://api.bilibili.com/x/relation/stat`),
+    async (res) => {
+      const data: {
+        code: number;
+        data: {
+          mid: number;
+          following: number;
+          follower: number;
+        };
+      } = await res.json();
 
-      return {
-        mid,
-        following: json.data.following,
-        follower: json.data.follower,
-      };
-    }
+      if (data.code !== 0) {
+        throw new Error("Invalid response");
+      }
+
+      return data.data;
+    },
+    necessary_filter
   );
 };
 
-export const watch_popular_users = async (zone: Zone, interval: number, callback: (users: User[]) => Promise<void | (() => Promise<void>)>) => {
-  let cleanup: () => Promise<void>;
+const tasks: {
+  status: "running" | "pending" | "done";
+  task: () => Promise<void>;
+}[] = [];
 
-  const task = () => {
-    setTimeout(
-      async () => {
-        if (cleanup) await cleanup();
+setInterval(async () => {
+  tasks
+    .filter((task) => task.status === "pending")
+    .slice(0, config.max_tasks - tasks.filter((task) => task.status === "running").length)
+    .map(async (task) => {
+      task.status = "running";
+      await task.task();
+      task.status = "done";
+    });
+}, 50);
 
-        const users = await get_popular_users(zone, interval);
-        const maybe_cleanup = await callback(users);
+export const schedule = async <T>(task: () => T | Promise<T>, interval: number, callback: ScheduleCallback<T>) => {
+  let dispose: void | (() => void | Promise<void>);
 
-        if (maybe_cleanup) {
-          cleanup = maybe_cleanup;
-        }
+  dispose = await new Promise<ReturnType<ScheduleCallback<T>>>((resolve) => {
+    tasks.push({
+      status: "pending",
+      task: async () => {
+        resolve(await callback(await task()));
       },
-      random(0, 1000)
-    );
-  };
+    });
+  });
 
-  task();
-  const clear_id = setInterval(task, interval);
+  const clear_id = setInterval(async () => {
+    dispose && (await dispose());
+
+    dispose = await callback(await task());
+  }, interval);
 
   return () => clearInterval(clear_id);
 };
 
-export const watch_user_relations = async (mid: number, interval: number, callback: (relation: Relation) => Promise<void | (() => Promise<void>)>) => {
-  const task = () => {
-    setTimeout(
-      async () => {
-        const relation = await get_user_relations(mid, interval / 4);
-        await callback(relation);
-      },
-      random(0, 1000)
-    );
-  };
+export const watch_videos = async (zone: Zone, interval: number, callback: ScheduleCallback<Video[]>) => {
+  return await schedule(async () => await capture_videos(zone), interval, callback);
+};
 
-  task();
-  const clear_id = setInterval(task, interval);
+export const watch_relations = async (mid: number, interval: number, callback: ScheduleCallback<Relation>) => {
+  return await schedule(async () => await capture_relations(mid), interval, callback);
+};
 
-  return () => clearInterval(clear_id);
+export const calculate_words = async (raw_words: string[]): Promise<Word[]> => {
+  const words = raw_words
+    .map((word) => cut(word, true))
+    .flat()
+    .filter((word) => word.length > 1);
+
+  return sortBy(
+    (word) => word.heat,
+    Array.from(new Set(words)).map((word) => ({
+      name: word,
+      heat: words.filter((w) => w === word).length,
+    }))
+  );
 };

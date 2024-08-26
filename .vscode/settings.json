@@ -1,17 +1,20 @@
 {
   "cSpell.words": [
     "Bilibili",
+    "bvid",
     "cinephile",
     "domcontentloaded",
     "douga",
     "echarts",
     "Fastify",
     "guochuang",
+    "jieba",
     "KHTML",
     "kichiku",
     "networkidle",
     "Noto",
     "resvg",
     "tname"
-  ]
+  ],
+  "typescript.tsdk": "node_modules\\typescript\\lib"
 }
