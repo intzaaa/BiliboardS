@@ -19,7 +19,7 @@ const opts = {
   },
   string: [
     "user-agent",
-    "max-tabs",
+    "max-tasks",
     "max-retries",
     "db",
     "db-video",
@@ -96,7 +96,7 @@ export const config: {
   };
 } = {
   once: args["once"],
-  max_tasks: Number(args["max-tabs"] ?? 5),
+  max_tasks: Number(args["max-tasks"] ?? 5),
   browser: {
     headless: args["headless"],
     sandbox: args["sandbox"],
