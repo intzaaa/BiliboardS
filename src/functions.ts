@@ -218,5 +218,5 @@ export const calculate_words = async (raw_words: string[]): Promise<Word[]> => {
       name: word,
       heat: words.filter((w) => w === word).length,
     }))
-  );
+  ).reverse();
 };
