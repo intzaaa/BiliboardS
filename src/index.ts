@@ -206,7 +206,8 @@ watch_videos("all", config.intervals.video, async (videos) => {
 });
 
 await server.listen({
+  host: "127.0.0.1",
   port: config.port,
 });
 
-log(`已启动本地服务器 ${config.port}`);
+log(`已启动本地服务器 http://127.0.0.1:${config.port}`);
