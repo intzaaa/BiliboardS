@@ -18,6 +18,7 @@ const opts = {
     sandbox: true,
   },
   string: [
+    "port",
     "user-agent",
     "max-tasks",
     "max-retries",
@@ -70,6 +71,7 @@ const databases_directory = args["db"] ?? "databases";
 export const config: {
   once: boolean;
   max_tasks: number;
+  port: number;
   browser: {
     headless: boolean;
     sandbox: boolean;
@@ -97,6 +99,7 @@ export const config: {
 } = {
   once: args["once"],
   max_tasks: Number(args["max-tasks"] ?? 5),
+  port: Number(args["port"] ?? 3000),
   browser: {
     headless: args["headless"],
     sandbox: args["sandbox"],
@@ -202,6 +205,8 @@ watch_videos("all", config.intervals.video, async (videos) => {
   };
 });
 
-server.listen({
-  port: 3000,
+await server.listen({
+  port: config.port,
 });
+
+log(`已启动本地服务器 ${config.port}`);

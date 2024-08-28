@@ -1,6 +1,6 @@
 import fastify from "fastify";
 import cors from "@fastify/cors";
-import { min_interval, relation_database, video_database } from ".";
+import { config, min_interval, relation_database, video_database } from ".";
 import { Responses } from "./types";
 import { calculate_words } from "./functions";
 
@@ -26,4 +26,23 @@ server.get("/", async (request): Promise<Responses["/"]> => {
       })),
     },
   };
+});
+
+server.get("/config", async (): Promise<Responses["/config"]> => {
+  return config;
+});
+
+server.get("/videos", async (): Promise<Responses["/videos"]> => {
+  return video_database.data.map((db) => db.value).flat();
+});
+
+server.get("/relations", async (): Promise<Responses["/relations"]> => {
+  return relation_database.data.map((db) => db.value);
+});
+
+server.get("/users", async (): Promise<Responses["/users"]> => {
+  return video_database.data
+    .map((db) => db.value)
+    .flat()
+    .map((video) => video.owner);
 });

@@ -70,18 +70,10 @@ export type Responses = {
     };
   };
   "/config": typeof config;
-  "/videos": {
-    videos: Video[];
-  };
-  "/relations": {
-    relations: Relation[];
-  };
-  "/users": {
-    users: User[];
-  };
-  "/words": {
-    words: Word[];
-  };
+  "/videos": Video[];
+  "/relations": Relation[];
+  "/users": User[];
+  "/words": Word[];
 };
 
 export type PromiseOrNot<T> = T | Promise<T>;
